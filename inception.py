@@ -75,6 +75,7 @@ class Inception3(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
+        # x -> (b x 3 x 299 x 299)
         if self.transform_input:
             x_ch0 = torch.unsqueeze(x[:, 0], 1) * \
                 (0.229 / 0.5) + (0.485 - 0.5) / 0.5
