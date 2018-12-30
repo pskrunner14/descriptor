@@ -1,2 +1,3 @@
-# descriptor
-Image Captioning using CNN Encoder and RNN Decoder
+# Descriptor
+
+Image Captioning using CNN Encoder and RNN Decoder with PyTorch and TorchVision.

@@ -38,7 +38,7 @@ def inception_v3(pretrained=False, **kwargs):
 
 class Inception3(nn.Module):
 
-    def __init__(self, num_classes=1000, aux_logits=True, transform_input=False):
+    def __init__(self, num_classes=1000, aux_logits=True, transform_input=True):
         super(Inception3, self).__init__()
         self.aux_logits = aux_logits
         self.transform_input = transform_input
@@ -115,9 +115,6 @@ class Inception3(nn.Module):
         # 17 x 17 x 768
         x = self.Mixed_6e(x)
         # 17 x 17 x 768
-        # if self.training and self.aux_logits:
-        #     aux = self.AuxLogits(x)
-        # 17 x 17 x 768
         x = self.Mixed_7a(x)
         # 8 x 8 x 1280
         x = self.Mixed_7b(x)
@@ -130,10 +127,6 @@ class Inception3(nn.Module):
         # 1 x 1 x 2048
         x = x.view(x.size(0), -1)
         # 2048
-        # x = self.fc(x)
-        # # 1000 (num_classes)
-        # if self.training and self.aux_logits:
-        #     return x, aux
         return x
 
 
