@@ -1,14 +1,12 @@
-""" Utility Module for Image Captioning CRNN model.
-"""
+""" Utility Module for Image Captioning CRNN model. """
 import os
 import json
-
-from collections import defaultdict
+import collections
 
 import torch
 import torchvision as vision
-import imageio as io
 
+import imageio as io
 import matplotlib.pyplot as plt
 
 
@@ -16,15 +14,15 @@ def get_captions(json_file_path, filenames):
     """ Get captions for given filenames.
 
     Args:
-        json_file_path (string): Path to the json file with annotations.
+        json_file_path (string): Path to the json file containing annotations/captions.
         filenames (list): List with all the filenames.
     """
-    with open(json_file_path, "r") as f:
-        data = json.load(f)
+    with open(json_file_path, "r") as file:
+        data = json.load(file)
     # dict(image_idx: image_file_name)
     id_to_filename = {img['id']: img['file_name'] for img in data['images']}
     # defualtdict(new_key: [])
-    filenames_to_captions = defaultdict(list)
+    filenames_to_captions = collections.defaultdict(list)
     # add captions corresponding to image under image_id in dict
     for caption in data['annotations']:
         filenames_to_captions[id_to_filename[caption['image_id']]].append(
