@@ -41,10 +41,10 @@ class ImageDataset(torch.utils.data.Dataset):
     """
 
     def __init__(self, json_file='captions_train2014.json', root_dir='data/train2014'):
-        self.filenames = os.listdir(root_dir)
+        self.images = os.listdir(root_dir)
         self.captions = get_captions(
             f'data/captions_train-val2014/annotations/{json_file}',
-            self.filenames
+            self.images
         )
         self.root_dir = root_dir
         self.transform = vision.transforms.Compose([
@@ -54,15 +54,15 @@ class ImageDataset(torch.utils.data.Dataset):
         ])
 
     def __len__(self):
-        return len(self.filenames)
+        return len(self.images)
 
     def __getitem__(self, idx):
-        img_name = self.filenames[idx]
+        img_name = self.images[idx]
         image = io.imread(f'{self.root_dir}/{img_name}')
         image = image_center_crop(image)
         image = self.transform(image)
         captions = self.captions[idx]
-        return image, captions
+        return {'image': image, 'captions': captions}
 
 
 def image_center_crop(img):
