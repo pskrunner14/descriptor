@@ -1,4 +1,4 @@
-""" Utility Module for Image Captioning CRNN model. """
+""" Data Utility Module for Image Captioning CRNN model. """
 import os
 import json
 import collections
@@ -7,8 +7,6 @@ import torch
 import torchvision as vision
 
 import imageio as io
-import matplotlib.pyplot as plt
-
 
 def get_captions(json_file_path, filenames):
     """ Get captions for given filenames.
@@ -25,8 +23,7 @@ def get_captions(json_file_path, filenames):
     filenames_to_captions = collections.defaultdict(list)
     # add captions corresponding to image under image_id in dict
     for caption in data['annotations']:
-        filenames_to_captions[id_to_filename[caption['image_id']]].append(
-            caption['caption'])
+        filenames_to_captions[id_to_filename[caption['image_id']]].append(caption['caption'])
     filenames_to_captions = dict(filenames_to_captions)
     # create a list of list of captions so we can access by idx
     return list(map(lambda x: filenames_to_captions[x], filenames))
@@ -64,7 +61,6 @@ class ImageDataset(torch.utils.data.Dataset):
         captions = self.captions[idx]
         return {'image': image, 'captions': captions}
 
-
 def image_center_crop(img):
     """ Center crop images.
 
@@ -85,23 +81,3 @@ def image_center_crop(img):
         pad_left = diff - diff // 2
         pad_right = diff // 2
     return img[pad_top: h - pad_bottom, pad_left: w - pad_right, :]
-
-
-def show_example(idx, json_file='captions_train2014.json', root_dir='data/train2014'):
-    """ Shows a Training example image along with
-    all captions corresponding to the image.
-
-    Args:
-        json_file (string): Path to the json file with annotations.
-        root_dir (string): Directory with all the images.
-    """
-    filenames = os.listdir(root_dir)
-    captions = get_captions(
-        f'data/captions_train-val2014/annotations/{json_file}',
-        filenames
-    )
-    img, captions = io.imread(
-        f'{root_dir}/{filenames[idx]}'), captions[idx]
-    plt.imshow(image_center_crop(img))
-    plt.title("\n".join(captions))
-    plt.show()
