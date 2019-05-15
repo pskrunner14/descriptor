@@ -3,10 +3,14 @@ import os
 import json
 import collections
 
+import numpy as np
+import imageio as io
+
 import torch
 import torchvision as vision
+import torchtext as text
 
-import imageio as io
+SPECIAL_TOKENS = ['<UNK>', '<PAD>', '<SOS>', '<EOS>']
 
 def get_captions(json_file_path, filenames):
     """ Get captions for given filenames.
@@ -28,8 +32,34 @@ def get_captions(json_file_path, filenames):
     # create a list of list of captions so we can access by idx
     return list(map(lambda x: filenames_to_captions[x], filenames))
 
+def load_vocab(name='6B', dim=300):
+    """
+    """
+    vocab = text.vocab.GloVe(name=name, dim=dim)
+    print(f'Loaded {len(vocab.itos)} {vocab.dim}-dimensional word vectors!')
+    vocab.itos = SPECIAL_TOKENS + vocab.itos
 
-class ImageDataset(torch.utils.data.Dataset):
+    del vocab.stoi
+    vocab.stoi = {}
+    for i, word in enumerate(vocab.itos):
+        vocab.stoi[word] = i
+
+    print(f'Adding special tokens to the vocab: {SPECIAL_TOKENS}')
+    special_token_tensors = torch.zeros(len(SPECIAL_TOKENS), vocab.dim, dtype=vocab.vectors.dtype)
+    vocab.vectors = torch.cat(tensors=(special_token_tensors, vocab.vectors))
+
+    print(vocab.itos[:5])
+    print(vocab.vectors.size())
+    return vocab
+
+def seq_to_tensor(sequence, word2idx, max_len=20):
+    """ Casts a list of sequences into rnn-digestable padded tensor """
+    seq_idx = torch.Tensor([word2idx[token] for token in sequence])
+    seq_idx = seq_idx[:max_len]
+    return torch.cat(tensors=(seq_idx, torch.Tensor([word2idx['<PAD>']] * max_len - len(seq_idx))))
+
+
+class Image2CaptionDataset(torch.utils.data.Dataset):
     """ Image dataset.
 
     Args:
@@ -37,7 +67,11 @@ class ImageDataset(torch.utils.data.Dataset):
         root_dir (string): Directory with all the images.
     """
 
-    def __init__(self, json_file='captions_train2014.json', root_dir='data/train2014'):
+    def __init__(self, word2idx, max_len=20,
+                json_file='captions_train2014.json',
+                root_dir='data/train2014'):
+        self.word2idx = word2idx
+        self.max_len = max_len
         self.images = os.listdir(root_dir)
         self.captions = get_captions(
             f'data/captions_train-val2014/annotations/{json_file}',
@@ -56,10 +90,17 @@ class ImageDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         img_name = self.images[idx]
         image = io.imread(f'{self.root_dir}/{img_name}')
+
         image = image_center_crop(image)
         image = self.transform(image)
-        captions = self.captions[idx]
-        return {'image': image, 'captions': captions}
+
+        ridx = np.random.randint(5)
+        caption = self.captions[idx][ridx]
+
+        return {
+            'image': image,
+            'caption': seq_to_tensor(caption, self.word2idx, max_len=self.max_len)
+            }
 
 def image_center_crop(img):
     """ Center crop images.
