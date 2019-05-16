@@ -31,7 +31,8 @@ class RNNDecoder(nn.Module):
         self.rnn_type = rnn_type.upper()
         if self.rnn_type in ['RNN', 'LSTM', 'GRU']:
             self.rnn = getattr(nn, self.rnn_type)(input_size=embedding_dim, hidden_size=hidden_size,
-                                                  num_layers=num_layers, dropout=dropout, batch_first=True)
+                                                  num_layers=num_layers, dropout=dropout, 
+                                                  batch_first=True)
         else:
             raise UserWarning('invalid RNN type!')
         self.token_logits_bottleneck = nn.Linear(hidden_size, logit_bottleneck_size)

@@ -4,11 +4,13 @@ import json
 import collections
 
 import numpy as np
-import imageio as io
+import cv2
 
 import torch
 import torchvision as vision
 import torchtext as text
+
+from keras.applications.inception_v3 import preprocess_input
 
 SPECIAL_TOKENS = ['<UNK>', '<PAD>', '<SOS>', '<EOS>']
 
@@ -35,7 +37,16 @@ def get_captions(json_file_path, filenames):
     return list(map(lambda x: filenames_to_captions[x], filenames))
 
 def load_vocab(name='6B', dim=300):
-    """
+    """Loads a pretrained GloVe word embeddings model.
+
+    Args:
+    -----
+        name (str): name of the GloVe model.
+        dim (int): dimension of the word vector.
+
+    Returns:
+    --------
+        torchtext.vocab.GloVe: the pretrained GloVe word embeddings model.
     """
     vocab = text.vocab.GloVe(name=name, dim=dim)
     print(f'Loaded {len(vocab.itos)} {vocab.dim}-dimensional word vectors!')
@@ -55,8 +66,20 @@ def load_vocab(name='6B', dim=300):
     return vocab
 
 def seq_to_tensor(sequence, word2idx, max_len=20):
-    """ Casts a list of sequences into rnn-digestable padded tensor """
-    seq_idx = torch.Tensor([word2idx['<SOS>']] + [word2idx[token] if token in word2idx else word2idx['<UNK>'] for token in sequence.lower().split(' ')])
+    """Casts a text sequence into rnn-digestable padded tensor.
+
+    Args:
+    -----
+        sequence (str): the input text sequence.
+        word2idx (dict): the mapping from word to index.
+        max_len (int): maximum rnn-digestable length of the sequence.
+
+    Returns:
+    --------
+        torch.Tensor: the output tensor of token ids.
+    """
+    seq_idx = torch.Tensor([word2idx['<SOS>']] + [word2idx[token] if token in word2idx else word2idx['<UNK>']
+                            for token in sequence.lower().split(' ')])
     seq_idx = seq_idx[: max_len] if len(seq_idx) < max_len else seq_idx[: max_len - 1]
     seq_idx = torch.cat(tensors=(seq_idx, torch.Tensor([word2idx['<EOS>']])))
     seq_idx = torch.cat(tensors=(seq_idx, torch.Tensor([word2idx['<PAD>']] * (max_len - len(seq_idx)))))
@@ -64,16 +87,18 @@ def seq_to_tensor(sequence, word2idx, max_len=20):
 
 
 class Image2CaptionDataset(torch.utils.data.Dataset):
-    """ Image dataset.
+    """Image to Caption mapping dataset.
 
     Args:
+        word2idx (dict):
+        max_len (int): 
         json_file (string): Path to the json file with annotations.
         root_dir (string): Directory with all the images.
     """
 
-    def __init__(self, word2idx, max_len=20,
-                json_file='captions_train2014.json',
-                root_dir='data/train2014'):
+    def __init__(self, word2idx, max_len=20, 
+                 json_file='captions_train2014.json',
+                 root_dir='data/train2014'):
         self.word2idx = word2idx
         self.max_len = max_len
         self.images = os.listdir(root_dir)
@@ -83,8 +108,6 @@ class Image2CaptionDataset(torch.utils.data.Dataset):
         )
         self.root_dir = root_dir
         self.transform = vision.transforms.Compose([
-            vision.transforms.ToPILImage(),
-            vision.transforms.Resize((299, 299)),
             vision.transforms.ToTensor()
         ])
 
@@ -93,24 +116,30 @@ class Image2CaptionDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         img_name = self.images[idx]
-        image = io.imread(f'{self.root_dir}/{img_name}')
-
-        image = image_center_crop(image)
-        image = self.transform(image)
+        img = cv2.imread(f'{self.root_dir}/{img_name}')
+        img = image_center_crop(img)
+        img = cv2.resize(img, (299, 299)).astype('float32')
+        img = preprocess_input(img)  # preprocess for model
+        img = self.transform(img)
 
         ridx = np.random.randint(5)
         caption = self.captions[idx][ridx]
 
         return {
-            'image': image,
+            'image': img,
             'caption': seq_to_tensor(caption, self.word2idx, max_len=self.max_len)
-            }
+        }
 
 def image_center_crop(img):
     """ Center crop images.
 
     Args:
+    -----
         img (numpy.ndarray): Image array to crop.
+
+    Returns:
+    --------
+        numpy.ndarray: 
     """
     h, w = img.shape[0], img.shape[1]
     pad_left = 0
