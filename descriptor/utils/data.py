@@ -14,8 +14,6 @@ from keras.applications.inception_v3 import preprocess_input
 
 SPECIAL_TOKENS = ['<UNK>', '<PAD>', '<SOS>', '<EOS>']
 
-cuda0 = torch.device('cuda:0')
-
 def get_captions(json_file_path, filenames):
     """ Get captions for given filenames.
 

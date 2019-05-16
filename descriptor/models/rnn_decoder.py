@@ -3,6 +3,16 @@ import torch
 import torch.nn as nn
 import torch.functional as F
 
+def glorot_normal_initializer(m):
+    """ Applies Glorot Normal initialization to layer parameters.
+    
+    "Understanding the difficulty of training deep feedforward neural networks" 
+    by Glorot, X. & Bengio, Y. (2010)
+    Args:
+        m (nn.Module): a particular layer whose params are to be initialized.
+    """
+    if type(m) == nn.Linear:
+        nn.init.xavier_normal_(m.weight)
 
 class RNNDecoder(nn.Module):
     """ RNN Decoder model for Image Captioning model
@@ -18,25 +28,39 @@ class RNNDecoder(nn.Module):
                  pretrained_embeddings=None):
         super(RNNDecoder, self).__init__()
         self.img_embed_to_bottleneck = nn.Sequential(
-            nn.Linear(img_emb_size, bottleneck_size),
+            nn.Linear(img_emb_size, bottleneck_size).apply(glorot_normal_initializer),
             nn.ELU()
         )
         self.img_bottleneck_to_hidden = nn.Sequential(
-            nn.Linear(bottleneck_size, hidden_size),
+            nn.Linear(bottleneck_size, hidden_size).apply(glorot_normal_initializer),
             nn.ELU()
         )
         self.embedding = nn.Embedding(n_tokens, embedding_dim, padding_idx=padding_idx)
-        if pretrained_embeddings:
-            self.embedding.weight = pretrained_embeddings
+        self.dropout = nn.Dropout(p=dropout)
+        if pretrained_embeddings is not None:
+            self.embedding.weight = nn.Parameter(data=pretrained_embeddings)
         self.rnn_type = rnn_type.upper()
         if self.rnn_type in ['RNN', 'LSTM', 'GRU']:
             self.rnn = getattr(nn, self.rnn_type)(input_size=embedding_dim, hidden_size=hidden_size,
-                                                  num_layers=num_layers, dropout=dropout, 
+                                                  num_layers=num_layers, dropout=dropout,
                                                   batch_first=True)
         else:
             raise UserWarning('invalid RNN type!')
-        self.token_logits_bottleneck = nn.Linear(hidden_size, logit_bottleneck_size)
-        self.token_logits = nn.Linear(logit_bottleneck_size, n_tokens)
+        self.token_logits_bottleneck = nn.Linear(hidden_size, logit_bottleneck_size).apply(glorot_normal_initializer)
+        self.token_logits = nn.Linear(logit_bottleneck_size, n_tokens).apply(glorot_normal_initializer)
 
-    def forward(self, inputs):
-        pass
+    def forward(self, inputs, hidden):
+        out = self.img_embed_to_bottleneck(inputs)
+        out = self.img_bottleneck_to_hidden(out)
+        embeds = self.embedding(out)
+        out = self.dropout(embeds)
+        outputs, hidden = self.rnn(out.view(inputs.size(0), 1, -1), hidden)
+        logits = self.logits(outputs.view(-1, self.hidden_size))
+        probs = F.log_softmax(logits, dim=1)
+        return probs, hidden
+
+    def initHidden(self, batch_size):
+        if self.rnn_type == 'LSTM':
+            return (torch.zeros(self.num_layers, batch_size, self.hidden_size),
+                    torch.zeros(self.num_layers, batch_size, self.hidden_size))
+        return torch.zeros(self.num_layers, batch_size, self.hidden_size)
