@@ -8,7 +8,7 @@ IMG_SIZE = 299
 
 def get_cnn_encoder():
     """ Returns the Pre-trained CNN Encoder model. """
-    return inception_v3(pretrained=True).cuda()
+    return inception_v3(pretrained=True)
 
 def encode(images, cnn_encoder=None):
     """ Generates embeddings of images using pre-trained
@@ -21,4 +21,4 @@ def encode(images, cnn_encoder=None):
     # images = torch.randn(5, 3, 299, 299).to(device='cuda')
     if cnn_encoder is None:
         cnn_encoder = get_cnn_encoder()
-    return cnn_encoder(images.to(device='cuda'))
+    return cnn_encoder(images)

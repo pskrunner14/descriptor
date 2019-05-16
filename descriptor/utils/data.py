@@ -10,6 +10,8 @@ import torch
 import torchvision as vision
 import torchtext as text
 
+from descriptor.models.cnn_encoder import encode
+
 from keras.applications.inception_v3 import preprocess_input
 
 SPECIAL_TOKENS = ['<UNK>', '<PAD>', '<SOS>', '<EOS>']

@@ -41,6 +41,8 @@ class RNNDecoder(nn.Module):
             self.embedding.weight = nn.Parameter(data=pretrained_embeddings)
         self.rnn_type = rnn_type.upper()
         if self.rnn_type in ['RNN', 'LSTM', 'GRU']:
+            self.num_layers = num_layers
+            self.hidden_size = hidden_size
             self.rnn = getattr(nn, self.rnn_type)(input_size=embedding_dim, hidden_size=hidden_size,
                                                   num_layers=num_layers, dropout=dropout,
                                                   batch_first=True)
