@@ -51,15 +51,18 @@ class RNNDecoder(nn.Module):
         self.token_logits_bottleneck = nn.Linear(hidden_size, logit_bottleneck_size).apply(glorot_normal_initializer)
         self.token_logits = nn.Linear(logit_bottleneck_size, n_tokens).apply(glorot_normal_initializer)
 
-    def forward(self, inputs, hidden):
-        out = self.img_embed_to_bottleneck(inputs)
-        out = self.img_bottleneck_to_hidden(out)
-        embeds = self.embedding(out)
+    def forward(self, inputs, hidden, image_embs=None):
+        if image_embs is not None:
+            e2b = self.img_embed_to_bottleneck(image_embs)
+            b2h = self.img_bottleneck_to_hidden(e2b)
+            h2h = b2h.view(self.num_layers, inputs.size(0), self.hidden_size)
+            hidden = (h2h, h2h)
+        embeds = self.embedding(inputs)
         out = self.dropout(embeds)
         outputs, hidden = self.rnn(out.view(inputs.size(0), 1, -1), hidden)
         logits = self.logits(outputs.view(-1, self.hidden_size))
         probs = F.log_softmax(logits, dim=1)
-        return probs, hidden
+        return probs
 
     def initHidden(self, batch_size):
         if self.rnn_type == 'LSTM':

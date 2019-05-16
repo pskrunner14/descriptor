@@ -99,25 +99,27 @@ def optimize(model, inputs, targets, criterion, optimizer, n_tokens, max_len=20)
     return loss.item()
 
 def forward(model, inputs, n_tokens, max_len=20):
-    hidden = model.initHidden(inputs.size(0))
-    if torch.cuda.is_available():
-        inputs = inputs.cuda()
-        if isinstance(hidden, tuple):
-            hidden = tuple([x.cuda() for x in hidden])
-        else:
-            hidden = hidden.cuda()
-    
-    # tensor for storing outputs of each time-step
-    outputs = torch.Tensor(max_len, inputs.size(0), n_tokens)
-    # loop over time-steps
-    for t in range(max_len):
-        # t-th time-step input
-        input_t = inputs[:, t]
-        outputs[t], hidden = model(input_t, hidden)
-    # (timesteps, batches, n_tokens) -> (batches, timesteps, n_tokens)
-    outputs = outputs.permute(1, 0, 2)
-    # ignore the last time-step since we don't have a target for it.
-    outputs = outputs[:, :-1, :]
+    for emb in inputs:
+        hidden = model.initHidden(inputs.size(0))
+        hidden = model.img_embed_to_bottleneck
+        if torch.cuda.is_available():
+            inputs = inputs.cuda()
+            if isinstance(hidden, tuple):
+                hidden = tuple([x.cuda() for x in hidden])
+            else:
+                hidden = hidden.cuda()
+        
+        # tensor for storing outputs of each time-step
+        outputs = torch.Tensor(max_len, inputs.size(0), n_tokens)
+        # loop over time-steps
+        for t in range(max_len):
+            # t-th time-step input
+            input_t = inputs[:, t]
+            outputs[t], hidden = model(input_t, hidden)
+        # (timesteps, batches, n_tokens) -> (batches, timesteps, n_tokens)
+        outputs = outputs.permute(1, 0, 2)
+        # ignore the last time-step since we don't have a target for it.
+        outputs = outputs[:, :-1, :]
     # (batches, timesteps, n_tokens) -> (batches x timesteps, n_tokens)
     outputs = outputs.contiguous().view(-1, n_tokens)
     return outputs
