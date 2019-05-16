@@ -13,7 +13,7 @@ from descriptor.utils.data import Image2CaptionDataset, load_vocab
 def train():
     """
     """
-    vocab = load_vocab()
+    vocab = load_vocab(name='6B', dim=300)
     idx2word = vocab.itos
     word2idx = vocab.stoi
     vectors = vocab.vectors
@@ -28,6 +28,6 @@ def train():
     # print(f'Validation set size: {len(val_dataset)}')
 
     for i, batch in enumerate(train_data_loader):
-        print(i, batch['image'].size(), batch['captions'].size())
+        print(i, batch['image'].size(), batch['caption'].size())
         if i > 10:
             break

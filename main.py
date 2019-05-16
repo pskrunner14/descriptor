@@ -1,5 +1,6 @@
-from descriptor.core.eval import evaluate
-from descriptor.core.training import train
+"""Main root module for testing package"""
+# from descriptor.core.eval import evaluate
+from descriptor.core import train
 
 def main():
     try:

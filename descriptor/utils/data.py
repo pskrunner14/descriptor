@@ -12,6 +12,8 @@ import torchtext as text
 
 SPECIAL_TOKENS = ['<UNK>', '<PAD>', '<SOS>', '<EOS>']
 
+cuda0 = torch.device('cuda:0')
+
 def get_captions(json_file_path, filenames):
     """ Get captions for given filenames.
 
@@ -45,7 +47,7 @@ def load_vocab(name='6B', dim=300):
         vocab.stoi[word] = i
 
     print(f'Adding special tokens to the vocab: {SPECIAL_TOKENS}')
-    special_token_tensors = torch.zeros(len(SPECIAL_TOKENS), vocab.dim, dtype=vocab.vectors.dtype)
+    special_token_tensors = torch.zeros(len(SPECIAL_TOKENS), vocab.dim)
     vocab.vectors = torch.cat(tensors=(special_token_tensors, vocab.vectors))
 
     print(vocab.itos[:5])
@@ -54,9 +56,11 @@ def load_vocab(name='6B', dim=300):
 
 def seq_to_tensor(sequence, word2idx, max_len=20):
     """ Casts a list of sequences into rnn-digestable padded tensor """
-    seq_idx = torch.Tensor([word2idx[token] for token in sequence])
-    seq_idx = seq_idx[:max_len]
-    return torch.cat(tensors=(seq_idx, torch.Tensor([word2idx['<PAD>']] * max_len - len(seq_idx))))
+    seq_idx = torch.Tensor([word2idx['<SOS>']] + [word2idx[token] if token in word2idx else word2idx['<UNK>'] for token in sequence.lower().split(' ')])
+    seq_idx = seq_idx[: max_len] if len(seq_idx) < max_len else seq_idx[: max_len - 1]
+    seq_idx = torch.cat(tensors=(seq_idx, torch.Tensor([word2idx['<EOS>']])))
+    seq_idx = torch.cat(tensors=(seq_idx, torch.Tensor([word2idx['<PAD>']] * (max_len - len(seq_idx)))))
+    return seq_idx
 
 
 class Image2CaptionDataset(torch.utils.data.Dataset):
