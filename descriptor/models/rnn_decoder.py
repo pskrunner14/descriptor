@@ -1,18 +1,19 @@
 """ RNN Decoder model for Image Captioning CRNN model. """
 import torch
-import torch.nn as nn
 import torch.functional as F
 
-def glorot_normal_initializer(m):
+from torch import nn
+
+def glorot_normal_initializer(module):
     """ Applies Glorot Normal initialization to layer parameters.
     
     "Understanding the difficulty of training deep feedforward neural networks" 
     by Glorot, X. & Bengio, Y. (2010)
     Args:
-        m (nn.Module): a particular layer whose params are to be initialized.
+        module (nn.Module): a particular layer whose params are to be initialized.
     """
-    if type(m) == nn.Linear:
-        nn.init.xavier_normal_(m.weight)
+    if isinstance(module, nn.Linear):
+        nn.init.xavier_normal_(module.weight)
 
 class RNNDecoder(nn.Module):
     """ RNN Decoder model for Image Captioning model
@@ -48,23 +49,30 @@ class RNNDecoder(nn.Module):
                                                   batch_first=True)
         else:
             raise UserWarning('invalid RNN type!')
-        self.token_logits_bottleneck = nn.Linear(hidden_size, logit_bottleneck_size).apply(glorot_normal_initializer)
-        self.token_logits = nn.Linear(logit_bottleneck_size, n_tokens).apply(glorot_normal_initializer)
+        self.token_logits_bottleneck = \
+            nn.Linear(hidden_size, logit_bottleneck_size).apply(glorot_normal_initializer)
+        self.token_logits = \
+            nn.Linear(logit_bottleneck_size, n_tokens).apply(glorot_normal_initializer)
 
     def forward(self, inputs, hidden, image_embs=None):
+        # init the hidden state (and cell state) with
+        # the latent representation of the input image
         if image_embs is not None:
             e2b = self.img_embed_to_bottleneck(image_embs)
             b2h = self.img_bottleneck_to_hidden(e2b)
             h2h = b2h.view(self.num_layers, inputs.size(0), self.hidden_size)
-            hidden = (h2h, h2h)
+            if self.rnn_type == 'LSTM':
+                hidden = (h2h, h2h)
+            else:
+                hidden = h2h
         embeds = self.embedding(inputs)
         out = self.dropout(embeds)
         outputs, hidden = self.rnn(out.view(inputs.size(0), 1, -1), hidden)
         logits = self.logits(outputs.view(-1, self.hidden_size))
         probs = F.log_softmax(logits, dim=1)
-        return probs
+        return probs, hidden
 
-    def initHidden(self, batch_size):
+    def init_hidden(self, batch_size):
         if self.rnn_type == 'LSTM':
             return (torch.zeros(self.num_layers, batch_size, self.hidden_size),
                     torch.zeros(self.num_layers, batch_size, self.hidden_size))

@@ -2,9 +2,9 @@
 on embeddings of images and sequences of captions.
 """
 import logging
-from tqdm import tqdm
-
 import torch
+
+from tqdm import tqdm
 from torch import nn
 from torch import optim
 
@@ -13,7 +13,10 @@ from descriptor.models.cnn_encoder import get_cnn_encoder, encode
 from descriptor.models.rnn_decoder import RNNDecoder
 
 def train():
-    """
+    """Trains the CRNN Autoencoder model for Image Captioning.
+
+    Args: 
+    -----
     """
     vocab = load_vocab(name='6B', dim=300)
     idx2word = vocab.itos
@@ -58,7 +61,10 @@ def train():
         epoch_loss, n_iter = 0.0, 0
 
         # loop over batches
-        for i, batch in tqdm(enumerate(train_data_loader), desc=f'Epoch[{epoch}/{num_epochs}]', leave=False, total=total_iters):
+        for _, batch in tqdm(enumerate(train_data_loader), 
+                             desc=f'Epoch[{epoch}/{num_epochs}]', 
+                             leave=False, total=total_iters):
+
             inputs, targets = batch['image'], batch['caption']
             inputs = encode(inputs.cuda(), cnn_encoder=cnn_model)
 
@@ -99,27 +105,24 @@ def optimize(model, inputs, targets, criterion, optimizer, n_tokens, max_len=20)
     return loss.item()
 
 def forward(model, inputs, n_tokens, max_len=20):
-    for emb in inputs:
-        hidden = model.initHidden(inputs.size(0))
-        hidden = model.img_embed_to_bottleneck
-        if torch.cuda.is_available():
-            inputs = inputs.cuda()
-            if isinstance(hidden, tuple):
-                hidden = tuple([x.cuda() for x in hidden])
-            else:
-                hidden = hidden.cuda()
-        
-        # tensor for storing outputs of each time-step
-        outputs = torch.Tensor(max_len, inputs.size(0), n_tokens)
-        # loop over time-steps
-        for t in range(max_len):
-            # t-th time-step input
-            input_t = inputs[:, t]
-            outputs[t], hidden = model(input_t, hidden)
-        # (timesteps, batches, n_tokens) -> (batches, timesteps, n_tokens)
-        outputs = outputs.permute(1, 0, 2)
-        # ignore the last time-step since we don't have a target for it.
-        outputs = outputs[:, :-1, :]
+    hidden = model.init_hidden(inputs.size(0))
+    if torch.cuda.is_available():
+        inputs = inputs.cuda()
+        if isinstance(hidden, tuple):
+            hidden = tuple([x.cuda() for x in hidden])
+        else:
+            hidden = hidden.cuda()
+    # tensor for storing outputs of each time-step
+    outputs = torch.Tensor(max_len, inputs.size(0), n_tokens)
+    # loop over time-steps
+    for t in range(max_len):
+        # t-th time-step input
+        input_t = inputs[:, t]
+        outputs[t], hidden = model(input_t, hidden)
+    # (timesteps, batches, n_tokens) -> (batches, timesteps, n_tokens)
+    outputs = outputs.permute(1, 0, 2)
+    # ignore the last time-step since we don't have a target for it.
+    outputs = outputs[:, :-1, :]
     # (batches, timesteps, n_tokens) -> (batches x timesteps, n_tokens)
     outputs = outputs.contiguous().view(-1, n_tokens)
     return outputs

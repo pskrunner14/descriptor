@@ -1,5 +1,8 @@
 [MASTER]
 
+# Good variable names which should always be accepted, separated by a comma
+good-names=i,j,k,t,m,n,_,x,y
+
 # A comma-separated list of package or module names from where C extensions may
 # be loaded. Extensions are loading into the active Python interpreter and may
 # run arbitrary code.
