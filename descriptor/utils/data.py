@@ -2,15 +2,18 @@
 import os
 import json
 import collections
+import multiprocessing as mp
 
 import numpy as np
 import cv2
+
+from tqdm import tqdm
 
 import torch
 import torchvision as vision
 import torchtext as text
 
-from descriptor.models.cnn_encoder import encode
+from descriptor.models.cnn_encoder import get_cnn_encoder, encode
 from keras.applications.inception_v3 import preprocess_input
 
 SPECIAL_TOKENS = ['<UNK>', '<PAD>', '<SOS>', '<EOS>']
@@ -86,6 +89,23 @@ def seq_to_tensor(sequence, word2idx, max_len=20):
                                           * (max_len - len(seq_idx)))))
     return seq_idx
 
+def tranform_image(image_path, transform):
+    img = cv2.imread(image_path)
+    img = image_center_crop(img)
+    img = cv2.resize(img, (299, 299)).astype('float32')
+    img = preprocess_input(img) # preprocess for model
+    return transform(img)
+
+def encode_and_save(root_dir, image_paths, transform):
+    args = [(f'{root_dir}/{img_path}', transform) for img_path in image_paths]
+    with mp.Pool(processes=mp.cpu_count() - 1) as pool:
+        images = pool.starmap(tranform_image, args)
+    images = torch.Tensor(images)
+    cnn_encoder = get_cnn_encoder()
+    tensors = encode(images, cnn_encoder=cnn_encoder)
+    for i, img_path in tqdm(enumerate(image_paths), desc='saving image encoding tensors'):
+        # save the image tensor
+        torch.save(tensors[i], f"{root_dir}/{img_path.replace('.jpg', '.pt')}")
 
 class Image2CaptionDataset(torch.utils.data.Dataset):
     """Image to Caption mapping dataset.
@@ -100,35 +120,33 @@ class Image2CaptionDataset(torch.utils.data.Dataset):
     def __init__(self, word2idx, max_len=20,
                  root_dir='data/train2014',
                  json_file='captions_train2014.json'):
-        self.word2idx = word2idx
-        self.max_len = max_len
-        self.images = os.listdir(root_dir)
-        self.captions = get_captions(
+        self._max_len = max_len
+        self.__word2idx = word2idx
+        self.__image_paths = os.listdir(root_dir)
+        self.__captions = get_captions(
             f'data/captions_train-val2014/annotations/{json_file}',
-            self.images
+            self.__image_paths
         )
-        self.root_dir = root_dir
-        self.transform = vision.transforms.Compose([
+        self.__root_dir = root_dir
+        _transform = vision.transforms.Compose([
             vision.transforms.ToTensor()
         ])
+        encode_and_save(self.__root_dir, self.__image_paths, _transform)
 
     def __len__(self):
-        return len(self.images)
+        return len(self.__image_paths)
 
     def __getitem__(self, idx):
-        img_name = self.images[idx]
-        img = cv2.imread(f'{self.root_dir}/{img_name}')
-        img = image_center_crop(img)
-        img = cv2.resize(img, (299, 299)).astype('float32')
-        img = preprocess_input(img)  # preprocess for model
-        img = self.transform(img)
+        img_name = self.__image_paths[idx]
+        image_tensor = torch.load(f"{self.__root_dir}/{img_name.replace('.jpg', '.pt')}")
 
         ridx = np.random.randint(5)
-        caption = self.captions[idx][ridx]
+        caption = self.__captions[idx][ridx]
+        caption = seq_to_tensor(caption, self.__word2idx, max_len=self._max_len)
 
         return {
-            'image': img,
-            'caption': seq_to_tensor(caption, self.word2idx, max_len=self.max_len)
+            'image': image_tensor,
+            'caption': caption
         }
 
 def image_center_crop(img):

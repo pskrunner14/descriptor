@@ -8,7 +8,7 @@ from tqdm import tqdm
 from torch import nn, optim
 
 from descriptor.utils.data import Image2CaptionDataset, load_vocab, SPECIAL_TOKENS
-from descriptor.models.cnn_encoder import get_cnn_encoder, encode
+# from descriptor.models.cnn_encoder import get_cnn_encoder, encode
 from descriptor.models.rnn_decoder import Descriptor
 
 idx2word = None
@@ -46,14 +46,14 @@ def train():
     val_data_loader = torch.utils.data.DataLoader(val_dataset, shuffle=True, num_workers=8, pin_memory=True)
     print(f'Validation set size: {len(val_dataset)}')
 
-    cnn_model = get_cnn_encoder()
+    # cnn_model = get_cnn_encoder()
     rnn_model = Descriptor(
         2048, n_tokens, 300, 64, 1, 'GRU',
         0.5, padding_idx=word2idx['<PAD>'],
         pretrained_embeddings=vectors
     )
     if torch.cuda.is_available():
-        cnn_model = cnn_model.cuda()
+        # cnn_model = cnn_model.cuda()
         rnn_model = rnn_model.cuda()
 
     # define training procedures and operations for training the model
@@ -75,7 +75,7 @@ def train():
                              leave=False, total=total_iters):
 
             inputs, targets = batch['image'], batch['caption']
-            inputs = encode(inputs.cuda(), cnn_encoder=cnn_model)
+            # inputs = encode(inputs.cuda(), cnn_encoder=cnn_model)
 
             # optimize model parameters
             epoch_loss += optimize(rnn_model, inputs, targets,
@@ -86,7 +86,7 @@ def train():
         # evaluate model after every epoch
         val_batch = next(iter(val_data_loader))
         val_inputs, val_targets = val_batch['image'], val_batch['caption']
-        val_inputs = encode(val_inputs.cuda(), cnn_encoder=cnn_model)
+        # val_inputs = encode(val_inputs.cuda(), cnn_encoder=cnn_model)
         val_loss = evaluate(rnn_model, val_inputs, val_targets, 
                             criterion, n_tokens, max_len=max_len)
         # lr_scheduler decreases lr when stuck at local minima

@@ -17,71 +17,87 @@ def glorot_normal_initializer(module):
         nn.init.xavier_normal_(module.weight)
 
 class Descriptor(nn.Module):
-    """ RNN Decoder model for Image Captioning model
-    that generates sequences for caption of an image encoding.
+    """ Descriptor: RNN Decoder model for Image Captioning model
+    that generates sequences for captioning an image encoding.
 
     Args:
 
     """
 
-    def __init__(self, img_emb_size, n_tokens,
-                 embedding_dim, hidden_size, num_layers, rnn_type,
-                 dropout, padding_idx=1,
-                 pretrained_embeddings=None):
+    def __init__(self, img_emb_size, n_tokens, embedding_dim=300,
+                 hidden_size=256, num_layers=2, rnn_type='gru', dropout=0.5,
+                 padding_idx=1, pretrained_embeddings=None):
         super(Descriptor, self).__init__()
+        # conversion layer from encoder hidden to decoder hidden states
         self.img_embed_to_hidden = nn.Sequential(
             nn.Linear(img_emb_size, hidden_size).apply(glorot_normal_initializer),
             nn.ELU()
         )
+        # bottom level input embedding layer
         self.embedding = nn.Embedding(n_tokens, embedding_dim, padding_idx=padding_idx)
-        self.dropout = nn.Dropout(p=dropout)
+        # init embedding layer with pretrained embeddings if available
         if pretrained_embeddings is not None:
             self.embedding.weight = nn.Parameter(data=pretrained_embeddings)
-        self.rnn_type = rnn_type.upper()
-        if self.rnn_type in ['RNN', 'LSTM', 'GRU']:
-            self.num_layers = num_layers
-            self.hidden_size = hidden_size
-            self.rnn = getattr(nn, self.rnn_type)(input_size=embedding_dim, hidden_size=hidden_size,
-                                                  num_layers=num_layers, dropout=dropout,
-                                                  batch_first=True)
+        self.dropout = nn.Dropout(p=dropout)
+        self._rnn_type = rnn_type.upper()
+        # core rnn layers
+        if self._rnn_type in ['RNN', 'LSTM', 'GRU']:
+            self.__num_layers = num_layers
+            self.__hidden_size = hidden_size
+            self.rnn = getattr(nn, self._rnn_type, default=nn.GRU)(
+                input_size=embedding_dim, hidden_size=self.__hidden_size,
+                num_layers=self.__num_layers, dropout=dropout, batch_first=True
+            )
         else:
             raise UserWarning('invalid RNN type!')
-        self.token_logits = \
-            nn.Linear(hidden_size, n_tokens).apply(glorot_normal_initializer)
-        self.probs = nn.LogSoftmax(dim=1)
+        # top level output softmax layer
+        self.logit_probs = nn.Sequential(
+            nn.Linear(hidden_size, n_tokens).apply(glorot_normal_initializer),
+            nn.LogSoftmax(dim=1)
+        )
 
     def forward(self, token_idx, hidden=None, image_embeddings=None):
-        """ Implements the forward pass of the char-level RNN.
-        
+        """ Implements the forward pass of the Descriptor Decoder RNN.
+
         Args:
         -----
             token_idx (torch.LongTensor): input step token batch to feed the network.
             hidden (torch.Tensor): hidden states of the RNN from previous time-step.
             image_embeddings (torch.Tensor): embeddings of the images from CNN encoder.
+
         Returns:
         --------
             torch.Tensor: output log softmax probability distribution over tokens.
-            torch.Tensor (or tuple of torch.Tensor for LSTM): hidden states of the RNN from current time-step.
+            torch.Tensor (or tuple of torch.Tensor for LSTM): hidden states of the
+            RNN from current time-step.
         """
         batch_size = token_idx.size(0)
         # init the hidden state (and cell state) with
         # the latent representation of the input image
         if image_embeddings is not None and hidden is None:
-            b2h = self.img_embed_to_hidden(image_embeddings)
-            h2h = b2h.unsqueeze(dim=0).repeat(self.num_layers, 1, 1)
-            if self.rnn_type == 'LSTM':
+            # compress image embedding to hidden layer dimensions
+            i2h = self.img_embed_to_hidden(image_embeddings)
+            # repeat tensor for each hidden layer of rnn
+            h2h = i2h.unsqueeze(dim=0).repeat(self.__num_layers, 1, 1)
+            # init hidden state conditioned on image embedding
+            if self._rnn_type == 'LSTM':
                 hidden = (h2h, h2h)
             else:
                 hidden = h2h
+        # convert idx to corresponding word vectors
         vecs = self.embedding(token_idx)
+        # apply dropout to word vectors
         vecs_d = self.dropout(vecs)
+        # pass through rnn layers
         out, hidden = self.rnn(vecs_d.view(batch_size, 1, -1), hidden)
-        logits = self.token_logits(out.view(-1, self.hidden_size))
-        probs = self.probs(logits)
+        # compute token logits over rnn outputs
+        # apply log softmax over logits to get prob distribution
+        probs = self.logit_probs(out.view(-1, self.hidden_size))
+        # return prob distribution and hidden states for next time step
         return probs, hidden
 
-    # def init_hidden(self, batch_size):
-    #     if self.rnn_type == 'LSTM':
-    #         return (torch.zeros(self.num_layers, batch_size, self.hidden_size),
-    #                 torch.zeros(self.num_layers, batch_size, self.hidden_size))
-    #     return torch.zeros(self.num_layers, batch_size, self.hidden_size)
+class BeamSearchDecoder():
+    """Beam Search enabled RNN Decoder.
+    """
+
+    pass

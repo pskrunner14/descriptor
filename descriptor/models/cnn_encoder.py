@@ -25,4 +25,5 @@ def encode(images, cnn_encoder=None):
         cnn_encoder = get_cnn_encoder()
     if torch.cuda.is_available():
         cnn_encoder = cnn_encoder.cuda()
+        images = images.cuda()
     return cnn_encoder(images)
