@@ -11,7 +11,6 @@ import torchvision as vision
 import torchtext as text
 
 from descriptor.models.cnn_encoder import encode
-
 from keras.applications.inception_v3 import preprocess_input
 
 SPECIAL_TOKENS = ['<UNK>', '<PAD>', '<SOS>', '<EOS>']
@@ -78,11 +77,13 @@ def seq_to_tensor(sequence, word2idx, max_len=20):
     --------
         torch.Tensor: the output tensor of token ids.
     """
-    seq_idx = torch.Tensor([word2idx['<SOS>']] + [word2idx[token] if token in word2idx else word2idx['<UNK>']
+    seq_idx = torch.LongTensor([word2idx['<SOS>']] + [word2idx[token] \
+                            if token in word2idx else word2idx['<UNK>'] \
                             for token in sequence.lower().split(' ')])
     seq_idx = seq_idx[: max_len] if len(seq_idx) < max_len else seq_idx[: max_len - 1]
-    seq_idx = torch.cat(tensors=(seq_idx, torch.Tensor([word2idx['<EOS>']])))
-    seq_idx = torch.cat(tensors=(seq_idx, torch.Tensor([word2idx['<PAD>']] * (max_len - len(seq_idx)))))
+    seq_idx = torch.cat(tensors=(seq_idx, torch.LongTensor([word2idx['<EOS>']])))
+    seq_idx = torch.cat(tensors=(seq_idx, torch.LongTensor([word2idx['<PAD>']] \
+                                          * (max_len - len(seq_idx)))))
     return seq_idx
 
 
@@ -90,15 +91,15 @@ class Image2CaptionDataset(torch.utils.data.Dataset):
     """Image to Caption mapping dataset.
 
     Args:
-        word2idx (dict):
-        max_len (int): 
-        json_file (string): Path to the json file with annotations.
-        root_dir (string): Directory with all the images.
+        word2idx (dict): word to index mapping vocab.
+        max_len (int): maximum allowed length of a caption string.
+        root_dir (string): directory with all the images.
+        json_file (string): path to the json file with annotations.
     """
 
-    def __init__(self, word2idx, max_len=20, 
-                 json_file='captions_train2014.json',
-                 root_dir='data/train2014'):
+    def __init__(self, word2idx, max_len=20,
+                 root_dir='data/train2014',
+                 json_file='captions_train2014.json'):
         self.word2idx = word2idx
         self.max_len = max_len
         self.images = os.listdir(root_dir)

@@ -1,2 +1,2 @@
 from .cnn_encoder import encode
-from .rnn_decoder import RNNDecoder
+from .rnn_decoder import Descriptor

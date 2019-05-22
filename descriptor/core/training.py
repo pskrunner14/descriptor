@@ -5,12 +5,14 @@ import logging
 import torch
 
 from tqdm import tqdm
-from torch import nn
-from torch import optim
+from torch import nn, optim
 
-from descriptor.utils.data import Image2CaptionDataset, load_vocab
+from descriptor.utils.data import Image2CaptionDataset, load_vocab, SPECIAL_TOKENS
 from descriptor.models.cnn_encoder import get_cnn_encoder, encode
-from descriptor.models.rnn_decoder import RNNDecoder
+from descriptor.models.rnn_decoder import Descriptor
+
+idx2word = None
+word2idx = None
 
 def train():
     """Trains the CRNN Autoencoder model for Image Captioning.
@@ -19,14 +21,16 @@ def train():
     -----
     """
     vocab = load_vocab(name='6B', dim=300)
+    global idx2word
     idx2word = vocab.itos
+    global word2idx
     word2idx = vocab.stoi
     vectors = vocab.vectors
 
     lr = 0.005
     max_len = 20
     num_epochs = 20
-    batch_size = 16
+    batch_size = 2
     n_tokens = len(word2idx)
 
     train_dataset = Image2CaptionDataset(word2idx=word2idx)
@@ -34,15 +38,20 @@ def train():
                                                     shuffle=True, num_workers=8, pin_memory=True)
     print(f'Training set size: {len(train_dataset)}')
 
-    val_dataset = Image2CaptionDataset(word2idx=word2idx, 
-                                       json_file='captions_val2014.json', 
-                                       root_dir='data/val2014')
-    val_data_loader = torch.utils.data.DataLoader(val_dataset, shuffle=True, num_workers=8)
+    val_dataset = Image2CaptionDataset(
+        word2idx=word2idx,
+        root_dir='data/val2014',
+        json_file='captions_val2014.json'
+    )
+    val_data_loader = torch.utils.data.DataLoader(val_dataset, shuffle=True, num_workers=8, pin_memory=True)
     print(f'Validation set size: {len(val_dataset)}')
 
     cnn_model = get_cnn_encoder()
-    rnn_model = RNNDecoder(2048, 120, n_tokens, 300, 256, 2, 'GRU', 0.5, 120,
-                           padding_idx=word2idx['<PAD>'], pretrained_embeddings=vectors)
+    rnn_model = Descriptor(
+        2048, n_tokens, 300, 64, 1, 'GRU',
+        0.5, padding_idx=word2idx['<PAD>'],
+        pretrained_embeddings=vectors
+    )
     if torch.cuda.is_available():
         cnn_model = cnn_model.cuda()
         rnn_model = rnn_model.cuda()
@@ -69,13 +78,17 @@ def train():
             inputs = encode(inputs.cuda(), cnn_encoder=cnn_model)
 
             # optimize model parameters
-            epoch_loss += optimize(rnn_model, inputs, targets, criterion, optimizer, n_tokens, max_len=max_len)
+            epoch_loss += optimize(rnn_model, inputs, targets,
+                                   criterion, optimizer, n_tokens,
+                                   max_len=max_len)
             n_iter += 1
 
         # evaluate model after every epoch
         val_batch = next(iter(val_data_loader))
         val_inputs, val_targets = val_batch['image'], val_batch['caption']
-        val_loss = evaluate(rnn_model, val_inputs, val_targets, criterion, n_tokens, max_len=max_len)
+        val_inputs = encode(val_inputs.cuda(), cnn_encoder=cnn_model)
+        val_loss = evaluate(rnn_model, val_inputs, val_targets, 
+                            criterion, n_tokens, max_len=max_len)
         # lr_scheduler decreases lr when stuck at local minima
         scheduler.step(val_loss)
         # log epoch status info
@@ -94,7 +107,8 @@ def optimize(model, inputs, targets, criterion, optimizer, n_tokens, max_len=20)
     # compute outputs after one forward pass
     outputs = forward(model, inputs, n_tokens, max_len=max_len)
     # ignore the first timestep since we don't have prev input for it
-    # (timesteps, batches, 1) -> (timesteps x batches x 1)
+    # (batches, timesteps) -> (timesteps x batches)
+    targets = targets[:, 1:].contiguous().view(-1)
     # compute loss wrt targets
     loss = criterion(outputs, targets)
     # backpropagate error
@@ -105,35 +119,41 @@ def optimize(model, inputs, targets, criterion, optimizer, n_tokens, max_len=20)
     return loss.item()
 
 def forward(model, inputs, n_tokens, max_len=20):
-    hidden = model.init_hidden(inputs.size(0))
+    """
+    """
+    batch_size = inputs.size(0)
     if torch.cuda.is_available():
         inputs = inputs.cuda()
-        if isinstance(hidden, tuple):
-            hidden = tuple([x.cuda() for x in hidden])
-        else:
-            hidden = hidden.cuda()
+    # init input <SOS> token for all batches
+    tokens = torch.LongTensor([word2idx['<SOS>']] * batch_size).cuda()
     # tensor for storing outputs of each time-step
-    outputs = torch.Tensor(max_len, inputs.size(0), n_tokens)
+    outputs = torch.Tensor(max_len, batch_size, n_tokens)
+    # condition the decoder hidden states on image encoding
+    outputs[0], hidden = model(tokens, image_embeddings=inputs)
     # loop over time-steps
-    for t in range(max_len):
+    for t in range(1, max_len):
         # t-th time-step input
-        input_t = inputs[:, t]
-        outputs[t], hidden = model(input_t, hidden)
+        _, tokens = outputs[t - 1].topk(1, dim=1)
+        outputs[t], hidden = model(tokens.cuda(), hidden)
     # (timesteps, batches, n_tokens) -> (batches, timesteps, n_tokens)
     outputs = outputs.permute(1, 0, 2)
-    # ignore the last time-step since we don't have a target for it.
+    # ignore the last time step since we don't have reference token for it
     outputs = outputs[:, :-1, :]
     # (batches, timesteps, n_tokens) -> (batches x timesteps, n_tokens)
     outputs = outputs.contiguous().view(-1, n_tokens)
     return outputs
 
 def evaluate(model, inputs, targets, criterion, n_tokens, max_len=20):
+    """
+    """
     model.eval()
     # compute outputs after one forward pass
     outputs = forward(model, inputs, n_tokens, max_len)
     # ignore the first timestep since we don't have prev input for it
     # (timesteps, batches, 1) -> (timesteps x batches x 1)
-    # targets = inputs[:, 1: ].contiguous().view(-1)
+    print(targets.size())
+    targets = targets[:, 1:].contiguous().view(-1)
+    print(targets.size())
     # compute loss wrt targets
     loss = criterion(outputs, targets)
     return loss.item()
