@@ -44,7 +44,7 @@ class Descriptor(nn.Module):
         if self._rnn_type in ['RNN', 'LSTM', 'GRU']:
             self.__num_layers = num_layers
             self.__hidden_size = hidden_size
-            self.rnn = getattr(nn, self._rnn_type, default=nn.GRU)(
+            self.rnn = getattr(nn, self._rnn_type)(
                 input_size=embedding_dim, hidden_size=self.__hidden_size,
                 num_layers=self.__num_layers, dropout=dropout, batch_first=True
             )

@@ -7,7 +7,7 @@ import torch
 from tqdm import tqdm
 from torch import nn, optim
 
-from descriptor.utils.data import Image2CaptionDataset, load_vocab, SPECIAL_TOKENS
+from descriptor.utils.data import ImageTensor2CaptionDataset, load_vocab
 # from descriptor.models.cnn_encoder import get_cnn_encoder, encode
 from descriptor.models.rnn_decoder import Descriptor
 
@@ -30,15 +30,15 @@ def train():
     lr = 0.005
     max_len = 20
     num_epochs = 20
-    batch_size = 2
+    batch_size = 64
     n_tokens = len(word2idx)
 
-    train_dataset = Image2CaptionDataset(word2idx=word2idx)
+    train_dataset = ImageTensor2CaptionDataset(word2idx=word2idx)
     train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size,
                                                     shuffle=True, num_workers=8, pin_memory=True)
     print(f'Training set size: {len(train_dataset)}')
 
-    val_dataset = Image2CaptionDataset(
+    val_dataset = ImageTensor2CaptionDataset(
         word2idx=word2idx,
         root_dir='data/val2014',
         json_file='captions_val2014.json'
