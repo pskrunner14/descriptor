@@ -17,7 +17,7 @@ word2idx = None
 def train():
     """Trains the CRNN Autoencoder model for Image Captioning.
 
-    Args: 
+    Args:
     -----
     """
     vocab = load_vocab(name='6B', dim=300)
@@ -43,17 +43,16 @@ def train():
         root_dir='data/val2014',
         json_file='captions_val2014.json'
     )
-    val_data_loader = torch.utils.data.DataLoader(val_dataset, shuffle=True, num_workers=8, pin_memory=True)
+    val_data_loader = torch.utils.data.DataLoader(val_dataset, shuffle=True, 
+                                                  num_workers=8, pin_memory=True)
     print(f'Validation set size: {len(val_dataset)}')
 
-    # cnn_model = get_cnn_encoder()
     rnn_model = Descriptor(
         2048, n_tokens, 300, 64, 1, 'GRU',
         0.5, padding_idx=word2idx['<PAD>'],
         pretrained_embeddings=vectors
     )
     if torch.cuda.is_available():
-        # cnn_model = cnn_model.cuda()
         rnn_model = rnn_model.cuda()
 
     # define training procedures and operations for training the model
@@ -86,7 +85,6 @@ def train():
         # evaluate model after every epoch
         val_batch = next(iter(val_data_loader))
         val_inputs, val_targets = val_batch['image'], val_batch['caption']
-        # val_inputs = encode(val_inputs.cuda(), cnn_encoder=cnn_model)
         val_loss = evaluate(rnn_model, val_inputs, val_targets, 
                             criterion, n_tokens, max_len=max_len)
         # lr_scheduler decreases lr when stuck at local minima

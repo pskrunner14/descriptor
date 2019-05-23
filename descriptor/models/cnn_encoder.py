@@ -1,8 +1,6 @@
 """ CNN Encoder model for Image Captioning CRNN model. """
 
 # pylint:disable=E1101
-import torch
-
 from .inception import inception_v3
 
 IMG_SIZE = 299
@@ -23,7 +21,4 @@ def encode(images, cnn_encoder=None):
     # images = torch.randn(5, 3, 299, 299).to(device='cuda')
     if cnn_encoder is None:
         cnn_encoder = get_cnn_encoder()
-    if torch.cuda.is_available():
-        cnn_encoder = cnn_encoder.cuda()
-        images = images.cuda()
     return cnn_encoder(images)

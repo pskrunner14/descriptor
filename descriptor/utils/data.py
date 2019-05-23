@@ -89,25 +89,33 @@ def seq_to_tensor(sequence, word2idx, max_len=20):
                                           * (max_len - len(seq_idx)))))
     return seq_idx
 
-def tranform_image(image_path, transform):
-    img = cv2.imread(image_path)
-    img = image_center_crop(img)
-    img = cv2.resize(img, (299, 299)).astype('float32')
-    img = preprocess_input(img) # preprocess for model
-    return transform(img)
+class Image2TensorDataset(torch.utils.data.Dataset):
+    """
+    """
+    
+    def __init__(self, root_dir='data/train2014'):
+        self.__root_dir = root_dir
+        self.__image_paths = list(filter(lambda x: x.endswith('.jpg'), os.listdir(root_dir)))
+        self.__transform = vision.transforms.Compose([
+            vision.transforms.ToTensor()
+        ])
 
-def encode_and_save(root_dir, image_paths, transform):
-    args = [(f'{root_dir}/{img_path}', transform) for img_path in image_paths]
-    with mp.Pool(processes=mp.cpu_count() - 1) as pool:
-        images = pool.starmap(tranform_image, args)
-    images = torch.Tensor(images)
-    cnn_encoder = get_cnn_encoder()
-    tensors = encode(images, cnn_encoder=cnn_encoder)
-    for i, img_path in tqdm(enumerate(image_paths), desc='saving image encoding tensors'):
-        # save the image tensor
-        torch.save(tensors[i], f"{root_dir}/{img_path.replace('.jpg', '.pt')}")
+    def __len__(self):
+        return len(self.__image_paths)
 
-class Image2CaptionDataset(torch.utils.data.Dataset):
+    def __getitem__(self, idx):
+        file_name = self.__image_paths[idx]
+        img = cv2.imread(f'{self.__root_dir}/{file_name}')
+        img = image_center_crop(img)
+        img = cv2.resize(img, (299, 299)).astype('float32')
+        img = preprocess_input(img) # preprocess for model
+        tensor = self.__transform(img)
+        return {
+            'image': tensor,
+            'file_name': file_name
+        }
+
+class ImageTensor2CaptionDataset(torch.utils.data.Dataset):
     """Image to Caption mapping dataset.
 
     Args:
@@ -122,23 +130,21 @@ class Image2CaptionDataset(torch.utils.data.Dataset):
                  json_file='captions_train2014.json'):
         self._max_len = max_len
         self.__word2idx = word2idx
-        self.__image_paths = os.listdir(root_dir)
+        self.__root_dir = root_dir
+        self.__image_paths = list(filter(lambda x: x.endswith('.jpg'), os.listdir(root_dir)))
+        self.__tensor_paths = list(filter(lambda x: x.endswith('.pt'), os.listdir(root_dir)))
+        assert len(self.__image_paths) == len(self.__tensor_paths), 'conversion to tensors buggy'
         self.__captions = get_captions(
             f'data/captions_train-val2014/annotations/{json_file}',
             self.__image_paths
         )
-        self.__root_dir = root_dir
-        _transform = vision.transforms.Compose([
-            vision.transforms.ToTensor()
-        ])
-        encode_and_save(self.__root_dir, self.__image_paths, _transform)
-
+        
     def __len__(self):
-        return len(self.__image_paths)
+        return len(self.__tensor_paths)
 
     def __getitem__(self, idx):
-        img_name = self.__image_paths[idx]
-        image_tensor = torch.load(f"{self.__root_dir}/{img_name.replace('.jpg', '.pt')}")
+        tensor_name = self.__tensor_paths[idx]
+        image_tensor = torch.load(f"{self.__root_dir}/{tensor_name}")
 
         ridx = np.random.randint(5)
         caption = self.__captions[idx][ridx]
@@ -158,7 +164,7 @@ def image_center_crop(img):
 
     Returns:
     --------
-        numpy.ndarray: 
+        numpy.ndarray:
     """
     h, w = img.shape[0], img.shape[1]
     pad_left = 0
@@ -174,3 +180,34 @@ def image_center_crop(img):
         pad_left = diff - diff // 2
         pad_right = diff // 2
     return img[pad_top: h - pad_bottom, pad_left: w - pad_right, :]
+
+def encode_and_save(root_dir, cnn_encoder=get_cnn_encoder()):
+    batch_size = 12
+
+    dataset = Image2TensorDataset(root_dir=root_dir)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
+                                             shuffle=False, num_workers=8,
+                                             pin_memory=True)
+
+    bmod = len(dataset) % batch_size
+    bdiv = len(dataset) // batch_size
+    total_iters = bdiv if bmod == 0 else bdiv + 1
+
+    for _, batch in tqdm(enumerate(dataloader), total=total_iters, leave=True,
+                         desc=f'Encoding images into embeddings and saving tensors to files: {root_dir}'):
+        images, file_names = batch['image'], batch['file_name']
+        tensors = encode(images.cuda(), cnn_encoder=cnn_encoder)
+        for i, file_name in enumerate(file_names):
+            torch.save(tensors[i], f"{root_dir}/{file_name.replace('.jpg', '.pt')}")
+
+def main():
+    cnn_encoder = get_cnn_encoder()
+    if torch.cuda.is_available():
+        cnn_encoder = cnn_encoder.cuda()
+
+    paths = ['data/train2014', 'data/val2014']
+    for path in paths:
+        encode_and_save(path, cnn_encoder=cnn_encoder)
+
+if __name__ == "__main__":
+    main()
