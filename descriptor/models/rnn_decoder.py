@@ -25,7 +25,7 @@ class Descriptor(nn.Module):
     """
 
     def __init__(self, img_emb_size, n_tokens, embedding_dim=300,
-                 hidden_size=256, num_layers=2, rnn_type='gru', dropout=0.5,
+                 hidden_size=256, num_layers=2, rnn_type='gru', dropout_p=0.5,
                  padding_idx=1, pretrained_embeddings=None):
         super(Descriptor, self).__init__()
         # conversion layer from encoder hidden to decoder hidden states
@@ -34,11 +34,12 @@ class Descriptor(nn.Module):
             nn.ELU()
         )
         # bottom level input embedding layer
-        self.embedding = nn.Embedding(n_tokens, embedding_dim, padding_idx=padding_idx)
         # init embedding layer with pretrained embeddings if available
-        if pretrained_embeddings is not None:
-            self.embedding.weight = nn.Parameter(data=pretrained_embeddings)
-        self.dropout = nn.Dropout(p=dropout)
+        if pretrained_embeddings is None:
+            self.embedding = nn.Embedding(n_tokens, embedding_dim, padding_idx=padding_idx)
+        else:
+            self.embedding = nn.Embedding.from_pretrained(pretrained_embeddings, freeze=True, padding_idx=padding_idx)
+        self.dropout = nn.Dropout(p=dropout_p)
         self._rnn_type = rnn_type.upper()
         # core rnn layers
         if self._rnn_type in ['RNN', 'LSTM', 'GRU']:
@@ -46,7 +47,7 @@ class Descriptor(nn.Module):
             self.__hidden_size = hidden_size
             self.rnn = getattr(nn, self._rnn_type)(
                 input_size=embedding_dim, hidden_size=self.__hidden_size,
-                num_layers=self.__num_layers, dropout=dropout, batch_first=True
+                num_layers=self.__num_layers, dropout=dropout_p, batch_first=True
             )
         else:
             raise UserWarning('invalid RNN type!')
@@ -78,23 +79,21 @@ class Descriptor(nn.Module):
             # compress image embedding to hidden layer dimensions
             i2h = self.img_embed_to_hidden(image_embeddings)
             # repeat tensor for each hidden layer of rnn
-            h2h = i2h.unsqueeze(dim=0).repeat(self.__num_layers, 1, 1)
+            i2h = i2h.unsqueeze(dim=0).repeat(self.__num_layers, 1, 1)
             # init hidden state conditioned on image embedding
             if self._rnn_type == 'LSTM':
-                hidden = (h2h, h2h)
+                hidden = (i2h, i2h)
             else:
-                hidden = h2h
+                hidden = i2h
         # convert idx to corresponding word vectors
-        vecs = self.embedding(token_idx)
-        # apply dropout to word vectors
-        vecs_d = self.dropout(vecs)
+        out = self.dropout(self.embedding(token_idx))
         # pass through rnn layers
-        out, hidden = self.rnn(vecs_d.view(batch_size, 1, -1), hidden)
+        out, hidden = self.rnn(out.view(batch_size, 1, -1), hidden)
         # compute token logits over rnn outputs
         # apply log softmax over logits to get prob distribution
-        probs = self.logit_probs(out.view(-1, self.hidden_size))
+        out = self.logit_probs(out.view(-1, self.__hidden_size))
         # return prob distribution and hidden states for next time step
-        return probs, hidden
+        return out, hidden
 
 class BeamSearchDecoder():
     """Beam Search enabled RNN Decoder.

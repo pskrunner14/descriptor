@@ -144,7 +144,7 @@ class ImageTensor2CaptionDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         tensor_name = self.__tensor_paths[idx]
-        image_tensor = torch.load(f"{self.__root_dir}/{tensor_name}")
+        image_tensor = torch.load(f"{self.__root_dir}/{tensor_name}").cpu().detach()
 
         ridx = np.random.randint(5)
         caption = self.__captions[idx][ridx]
@@ -192,11 +192,11 @@ def encode_and_save(root_dir, cnn_encoder=get_cnn_encoder()):
     bmod = len(dataset) % batch_size
     bdiv = len(dataset) // batch_size
     total_iters = bdiv if bmod == 0 else bdiv + 1
-
+    
     for _, batch in tqdm(enumerate(dataloader), total=total_iters, leave=True,
                          desc=f'Encoding images into embeddings and saving tensors to files: {root_dir}'):
         images, file_names = batch['image'], batch['file_name']
-        tensors = encode(images.cuda(), cnn_encoder=cnn_encoder).cpu()
+        tensors = encode(images.cuda(), cnn_encoder=cnn_encoder).cpu().detach()
         for i, file_name in enumerate(file_names):
             torch.save(tensors[i], f"{root_dir}/{file_name.replace('.jpg', '.pt')}")
 
@@ -206,7 +206,7 @@ def main():
         cnn_encoder = cnn_encoder.cuda()
 
     paths = ['data/train2014', 'data/val2014']
-    for path in paths:
+    for path in paths[1:]:
         encode_and_save(path, cnn_encoder=cnn_encoder)
 
 if __name__ == "__main__":

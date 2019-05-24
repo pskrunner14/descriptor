@@ -20,7 +20,7 @@ def train():
     Args:
     -----
     """
-    vocab = load_vocab(name='6B', dim=300)
+    vocab = load_vocab(name='6B', dim=50)
     global idx2word
     idx2word = vocab.itos
     global word2idx
@@ -30,7 +30,7 @@ def train():
     lr = 0.005
     max_len = 20
     num_epochs = 20
-    batch_size = 64
+    batch_size = 32
     n_tokens = len(word2idx)
 
     train_dataset = ImageTensor2CaptionDataset(word2idx=word2idx)
@@ -48,8 +48,9 @@ def train():
     print(f'Validation set size: {len(val_dataset)}')
 
     rnn_model = Descriptor(
-        2048, n_tokens, 300, 64, 1, 'GRU',
-        0.5, padding_idx=word2idx['<PAD>'],
+        img_emb_size=2048, n_tokens=n_tokens, embedding_dim=vectors.size(1),
+        hidden_size=64, num_layers=2, rnn_type='GRU',
+        dropout_p=0.5, padding_idx=word2idx['<PAD>'],
         pretrained_embeddings=vectors
     )
     if torch.cuda.is_available():
@@ -73,7 +74,7 @@ def train():
                              desc=f'Epoch[{epoch}/{num_epochs}]', 
                              leave=False, total=total_iters):
 
-            inputs, targets = batch['image'], batch['caption']
+            inputs, targets = batch['image'].cuda(), batch['caption']
             # inputs = encode(inputs.cuda(), cnn_encoder=cnn_model)
 
             # optimize model parameters
@@ -84,7 +85,7 @@ def train():
 
         # evaluate model after every epoch
         val_batch = next(iter(val_data_loader))
-        val_inputs, val_targets = val_batch['image'], val_batch['caption']
+        val_inputs, val_targets = val_batch['image'].cuda(), val_batch['caption']
         val_loss = evaluate(rnn_model, val_inputs, val_targets, 
                             criterion, n_tokens, max_len=max_len)
         # lr_scheduler decreases lr when stuck at local minima
@@ -120,8 +121,6 @@ def forward(model, inputs, n_tokens, max_len=20):
     """
     """
     batch_size = inputs.size(0)
-    if torch.cuda.is_available():
-        inputs = inputs.cuda()
     # init input <SOS> token for all batches
     tokens = torch.LongTensor([word2idx['<SOS>']] * batch_size).cuda()
     # tensor for storing outputs of each time-step
