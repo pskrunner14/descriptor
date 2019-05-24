@@ -196,9 +196,9 @@ def encode_and_save(root_dir, cnn_encoder=get_cnn_encoder()):
     for _, batch in tqdm(enumerate(dataloader), total=total_iters, leave=True,
                          desc=f'Encoding images into embeddings and saving tensors to files: {root_dir}'):
         images, file_names = batch['image'], batch['file_name']
-        tensors = encode(images.cuda(), cnn_encoder=cnn_encoder)
+        tensors = encode(images.cuda(), cnn_encoder=cnn_encoder).cpu()
         for i, file_name in enumerate(file_names):
-            torch.save(tensors[i].cpu(), f"{root_dir}/{file_name.replace('.jpg', '.pt')}")
+            torch.save(tensors[i], f"{root_dir}/{file_name.replace('.jpg', '.pt')}")
 
 def main():
     cnn_encoder = get_cnn_encoder()
